@@ -24,6 +24,7 @@ export function Dashboard() {
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [total, setTotal] = useState(0);
   const [dailyCount, setDailyCount] = useState(0);
+  const [dailyDate, setDailyDate] = useState(new Date().toISOString().split('T')[0]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   
@@ -61,8 +62,8 @@ export function Dashboard() {
       setTotalPages(res.data.totalPages);
       
       // Also fetch stats
-      const statsRes = await api.get('/records/stats');
-      setDailyCount(statsRes.data.todayCount);
+      await api.get('/records/stats');
+      // setDailyCount(statsRes.data.todayCount); // Old: record count
     } catch (error) {
       console.error('Error fetching records:', error);
     }
@@ -72,10 +73,18 @@ export function Dashboard() {
     try {
       const res = await api.get('/enquiries');
       setEnquiries(res.data);
+      
+      const dailyRes = await api.get('/enquiries/latest');
+      setDailyCount(dailyRes.data.value);
+      setDailyDate(dailyRes.data.date);
     } catch (error) {
       console.error('Error fetching enquiries:', error);
     }
   };
+
+  useEffect(() => {
+    fetchRecords();
+  }, [page, search]);
 
   useEffect(() => {
     fetchRecords();
@@ -88,13 +97,17 @@ export function Dashboard() {
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] sm:h-[calc(100vh-6rem)] gap-2 sm:gap-4">
       <div className="grid grid-cols-1 gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3 shrink-0">
-        <Card className="glass flex flex-col justify-center px-3 sm:px-4 py-2.5 sm:py-3 text-center items-center">
+        <Card className="glass flex flex-col justify-center px-3 sm:px-4 py-2.5 sm:py-3 text-center items-center relative group">
           <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200 mb-1">
             <Filter className="w-4 h-4 text-slate-500 dark:text-slate-400" /> <span className="text-xs sm:text-sm font-bold uppercase tracking-wider">Daily Enquiries</span>
           </div>
           <div className="flex flex-col items-center gap-1 mt-1 sm:mt-2">
             <span className="text-4xl sm:text-5xl font-extrabold tracking-tight text-brand-600 dark:text-brand-400 leading-none">{dailyCount}</span>
-            <span className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 leading-none mt-1">Enquiries added today</span>
+            <div className="flex flex-col items-center mt-1">
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                {new Date(dailyDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')}
+              </span>
+            </div>
           </div>
         </Card>
         

@@ -22,9 +22,12 @@ router.get('/', async (req, res) => {
 // PUT /api/settings - Update settings (protected)
 router.put('/', authenticate, async (req, res) => {
   try {
-    const { project_title } = req.body;
+    const { project_title, total_enquiries_override } = req.body;
     if (project_title !== undefined) {
       await run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['project_title', project_title]);
+    }
+    if (total_enquiries_override !== undefined) {
+      await run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['total_enquiries_override', total_enquiries_override.toString()]);
     }
     res.json({ message: 'Settings updated successfully' });
   } catch (err) {

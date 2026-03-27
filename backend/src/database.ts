@@ -88,6 +88,36 @@ export const db = new sqlite3.Database(dbPath, (err) => {
           console.log('Seeded default project title');
         }
       });
+
+      db.get('SELECT value FROM settings WHERE key = ?', ['total_enquiries_override'], (err, row: any) => {
+        if (!row) {
+          db.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['total_enquiries_override', '0']);
+          console.log('Seeded default total_enquiries_override');
+        }
+      });
+
+      // Create and seed daily_enquiries table
+      db.run(`CREATE TABLE IF NOT EXISTS daily_enquiries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT UNIQUE NOT NULL,
+        value INTEGER NOT NULL DEFAULT 0
+      )`);
+
+      db.get('SELECT COUNT(*) as count FROM daily_enquiries', (err, row: any) => {
+        if (row && row.count === 0) {
+          console.log('Seeding daily_enquiries (last 14 days)...');
+          const stmt = db.prepare('INSERT INTO daily_enquiries (date, value) VALUES (?, ?)');
+          for (let i = 0; i < 15; i++) {
+            const date = new Date();
+            date.setDate(date.getDate() - (14 - i));
+            const dStr = date.toISOString().split('T')[0];
+            const val = 5 + Math.floor(Math.random() * 15);
+            stmt.run([dStr, val]);
+          }
+          stmt.finalize();
+          console.log('Seeded 15 days of daily enquiries');
+        }
+      });
     });
   }
 });

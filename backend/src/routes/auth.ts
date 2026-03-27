@@ -30,13 +30,15 @@ router.post('/login', (req, res) => {
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) {
+    console.log('AUTH FAILURE: No token provided');
     return res.status(401).json({ error: 'Unauthorized' });
   }
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     (req as any).user = payload;
     next();
-  } catch (error) {
+  } catch (error: any) {
+    console.log('AUTH FAILURE: Invalid/Expired token -', error.message);
     return res.status(401).json({ error: 'Invalid token' });
   }
 };

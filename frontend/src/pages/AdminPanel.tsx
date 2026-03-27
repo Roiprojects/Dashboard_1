@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle, Input, Button, WhatsAppIcon, Avatar } from '../components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Input, Button, WhatsAppIcon, Avatar, Notification, ConfirmModal } from '../components/ui';
 import api from '../api/client';
-import { Plus, Edit2, Trash2, Phone, Download, Upload, Users, X, PlusCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Phone, Download, Upload, Users, X, PlusCircle, Save } from 'lucide-react';
 
 
 interface Record {
@@ -22,6 +22,12 @@ interface Enquiry {
   value: number;
 }
 
+interface DailyEnquiry {
+  id: number;
+  date: string;
+  value: number;
+}
+
 interface BulkRow {
   name: string;
   category: string;
@@ -32,6 +38,9 @@ interface BulkRow {
 export function AdminPanel() {
   const [data, setData] = useState<Record[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
+  const [dailyEnquiries, setDailyEnquiries] = useState<DailyEnquiry[]>([]);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [todayEnquiry, setTodayEnquiry] = useState<DailyEnquiry | null>(null);
   const [activeTab, setActiveTab] = useState<'records' | 'enquiries' | 'settings'>('records');
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -48,6 +57,7 @@ export function AdminPanel() {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
 
   const [projectTitle, setProjectTitle] = useState('');
+  const [manualTotal, setManualTotal] = useState(0);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // Bulk operations state
@@ -60,6 +70,10 @@ export function AdminPanel() {
   const [isExporting, setIsExporting] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Custom Modal/Notification State
+  const [notification, setNotification] = useState({ isOpen: false, message: '' });
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {}, onCancel: () => {} });
 
   const navigate = useNavigate();
 
@@ -101,38 +115,78 @@ export function AdminPanel() {
     }
   };
 
-  const fetchSettings = async () => {
+  const fetchDailyEnquiries = async () => {
     try {
-      const res = await api.get('/settings');
-      if (res.data.project_title) {
-        setProjectTitle(res.data.project_title);
+      const res = await api.get('/enquiries/daily');
+      setDailyEnquiries(res.data);
+      
+      // Find today's enquiry
+      const today = new Date().toISOString().split('T')[0];
+      const found = res.data.find((e: DailyEnquiry) => e.date === today);
+      if (found) {
+        setTodayEnquiry(found);
+      } else {
+        setTodayEnquiry({ id: 0, date: today, value: 0 });
       }
     } catch (e) {
       console.error(e);
     }
   };
 
+  const fetchSettings = async () => {
+    try {
+      const res = await api.get('/settings');
+      setProjectTitle(res.data.project_title || '');
+      setManualTotal(parseInt(res.data.total_enquiries_override) || 0);
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    }
+  };
+
   useEffect(() => {
     fetchRecords();
   }, [page, genderFilter, originFilter]);
+  
+  useEffect(() => {
+    const found = dailyEnquiries.find(e => e.date === selectedDate);
+    if (found) {
+      setTodayEnquiry(found);
+    } else {
+      setTodayEnquiry({ id: 0, date: selectedDate, value: 0 });
+    }
+  }, [selectedDate, dailyEnquiries]);
 
   useEffect(() => {
     fetchEnquiries();
+    fetchDailyEnquiries();
     fetchSettings();
   }, []);
 
   const handleSettingsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSavingSettings(true);
-    try {
-      await api.put('/settings', { project_title: projectTitle });
-      alert('Settings updated successfully. Refreshing page...');
-      window.location.reload(); // Hard refresh to update layout title
-    } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to update settings');
-    } finally {
-      setIsSavingSettings(false);
-    }
+    
+    setConfirmModal({
+      isOpen: true,
+      title: 'Save Settings',
+      message: 'Are you sure you want to update the dashboard settings?',
+      onConfirm: async () => {
+        setIsSavingSettings(true);
+        try {
+          await api.put('/settings', { 
+            project_title: projectTitle,
+            total_enquiries_override: manualTotal 
+          });
+          setNotification({ isOpen: true, message: 'Settings updated successfully!' });
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          setNotification({ isOpen: true, message: 'Failed to update settings.' });
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        } finally {
+          setIsSavingSettings(false);
+        }
+      },
+      onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
   // Clear selection when page changes
@@ -140,17 +194,55 @@ export function AdminPanel() {
     setSelectedIds(new Set());
   }, [page]);
 
-  const handleEnquiryChange = (id: number, val: string) => {
-    setEnquiries(prev => prev.map(e => e.id === id ? { ...e, value: parseInt(val) || 0 } : e));
+  const handleEnquiryChange = (id: number, field: keyof Enquiry, val: string) => {
+    setEnquiries(prev => prev.map(e => e.id === id ? { ...e, [field]: field === 'value' ? (parseInt(val) || 0) : val } : e));
   };
 
-  const saveEnquiry = async (id: number, val: number) => {
-    try {
-      await api.put(`/enquiries/${id}`, { value: val });
-    } catch (e) {
-      console.error(e);
-      alert('Failed to save enquiry value');
-    }
+  const saveEnquiry = async (enq: Enquiry) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Update Enquiry',
+      message: `Are you sure you want to save changes for ${enq.month} ${enq.year}?`,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          await api.put(`/enquiries/${enq.id}`, { 
+            month: enq.month, 
+            year: enq.year, 
+            value: enq.value 
+          });
+          setNotification({ isOpen: true, message: 'Monthly enquiry updated successfully!' });
+        } catch (e) {
+          console.error(e);
+          setNotification({ isOpen: true, message: 'Failed to save enquiry value' });
+        }
+      },
+      onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+    });
+  };
+
+  const saveDailyEnquiry = async (id: number, val: number, date?: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Update Daily Enquiries',
+      message: `Are you sure you want to save the enquiry count for ${date}?`,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          if (id && id > 0) {
+            await api.put(`/enquiries/daily/${id}`, { value: val });
+          } else {
+            await api.post('/enquiries/daily', { date, value: val });
+          }
+          fetchDailyEnquiries();
+          setNotification({ isOpen: true, message: 'Daily enquiry updated successfully!' });
+        } catch (e) {
+          console.error(e);
+          setNotification({ isOpen: true, message: 'Failed to save daily enquiry value' });
+        }
+      },
+      onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
   const handleOpenModal = (record?: Record) => {
@@ -166,49 +258,79 @@ export function AdminPanel() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      if (currentRecord?.id) {
-        await api.put(`/records/${currentRecord.id}`, formData);
-      } else {
-        await api.post('/records', formData);
-      }
-      setIsModalOpen(false);
-      fetchRecords(); // Refresh the data
-    } catch (error) {
-      console.error('Error saving record', error);
-      alert('Failed to save record.');
-    }
+    const action = currentRecord?.id ? 'update' : 'add';
+    
+    setConfirmModal({
+      isOpen: true,
+      title: `${action === 'update' ? 'Update' : 'Add'} Record`,
+      message: `Are you sure you want to ${action} this record?`,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          if (currentRecord?.id) {
+            await api.put(`/records/${currentRecord.id}`, formData);
+          } else {
+            await api.post('/records', formData);
+          }
+          setIsModalOpen(false);
+          fetchRecords();
+          setNotification({ isOpen: true, message: `Record ${action === 'update' ? 'updated' : 'added'} successfully!` });
+        } catch (error) {
+          console.error('Error saving record', error);
+          setNotification({ isOpen: true, message: 'Failed to save record.' });
+        }
+      },
+      onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('Are you sure you want to delete this record?')) {
-      try {
-        await api.delete(`/records/${id}`);
-        fetchRecords(); // Refresh
-      } catch (error) {
-        console.error('Error deleting record', error);
-        alert('Failed to delete record.');
-      }
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Record',
+      message: 'Are you sure you want to delete this record?',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          await api.delete(`/records/${id}`);
+          fetchRecords();
+          setNotification({ isOpen: true, message: 'Record deleted successfully!' });
+        } catch (error) {
+          console.error('Error deleting record', error);
+          setNotification({ isOpen: true, message: 'Failed to delete record.' });
+        }
+      },
+      onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      alert('New password and confirm password must match.');
+      setNotification({ isOpen: true, message: 'New password and confirm password must match.' });
       return;
     }
-    try {
-      await api.put('/auth/reset-password', {
-        currentPassword: passwordForm.currentPassword,
-        newPassword: passwordForm.newPassword
-      });
-      alert('Password updated successfully.');
-      setIsPasswordModalOpen(false);
-      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to update password.');
-    }
+    
+    setConfirmModal({
+      isOpen: true,
+      title: 'Reset Password',
+      message: 'Are you sure you want to change your password?',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          await api.put('/auth/reset-password', {
+            currentPassword: passwordForm.currentPassword,
+            newPassword: passwordForm.newPassword
+          });
+          setNotification({ isOpen: true, message: 'Password updated successfully!' });
+          setIsPasswordModalOpen(false);
+          setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        } catch (error: any) {
+          setNotification({ isOpen: true, message: error.response?.data?.error || 'Failed to update password.' });
+        }
+      },
+      onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
   // ── Checkbox Selection ──
@@ -309,19 +431,32 @@ export function AdminPanel() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsImporting(true);
-    try {
-      const text = await file.text();
-      const res = await api.post('/records/import', { csvData: text });
-      alert(`Successfully imported ${res.data.imported} record(s).`);
-      fetchRecords();
-    } catch (error) {
-      console.error('Import error:', error);
-      alert('Failed to import CSV file.');
-    } finally {
-      setIsImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Import Records',
+      message: `Are you sure you want to import records from ${file.name}?`,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setIsImporting(true);
+        try {
+          const text = await file.text();
+          const res = await api.post('/records/import', { csvData: text });
+          setNotification({ isOpen: true, message: `Successfully imported ${res.data.imported} record(s).` });
+          fetchRecords();
+        } catch (error) {
+          console.error('Import error:', error);
+          setNotification({ isOpen: true, message: 'Failed to import CSV file.' });
+        } finally {
+          setIsImporting(true); // Should be false in finally, fixing below
+          setIsImporting(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      },
+      onCancel: () => {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   return (
@@ -495,28 +630,97 @@ export function AdminPanel() {
           </div>
         </Card>
       ) : activeTab === 'enquiries' ? (
-        <Card className="glass animate-in fade-in duration-300">
-          <CardHeader>
-            <CardTitle>Monthly Enquiries</CardTitle>
-            <p className="text-sm text-slate-500">Edit values below. Changes are saved automatically when you click away.</p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-3">
-              {enquiries.map(enq => (
-                <div key={enq.id} className="bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 flex flex-col gap-1.5 focus-within:ring-2 ring-brand-500/50 transition-all">
-                  <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{enq.month} {enq.year}</div>
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle>Daily Enquiries Override</CardTitle>
+              <p className="text-sm text-slate-500">Manual override for enquiry counts on a specific date for the dashboard.</p>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row gap-4 sm:items-end max-w-md">
+                <div className="flex-1 space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Select Date</label>
                   <Input 
-                    type="number" 
-                    value={enq.value} 
-                    className="h-8 text-sm font-semibold px-2"
-                    onChange={(e) => handleEnquiryChange(enq.id, e.target.value)}
-                    onBlur={() => saveEnquiry(enq.id, enq.value)}
+                    type="date" 
+                    value={selectedDate} 
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="h-10"
                   />
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                {todayEnquiry && (
+                  <>
+                    <div className="flex-1 space-y-1.5">
+                      <label className="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">
+                        Enquiry Count
+                      </label>
+                      <Input 
+                        type="number" 
+                        value={todayEnquiry.value} 
+                        className="text-lg font-semibold h-10"
+                        onChange={(e) => setTodayEnquiry({ ...todayEnquiry, value: parseInt(e.target.value) || 0 })}
+                      />
+                    </div>
+                    <Button 
+                      onClick={() => saveDailyEnquiry(todayEnquiry.id, todayEnquiry.value, todayEnquiry.date)}
+                      className="h-10"
+                    >
+                      Update
+                    </Button>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle>Monthly Enquiries</CardTitle>
+              <p className="text-sm text-slate-500">Edit values below. Changes are saved automatically when you click away.</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-3">
+                {enquiries.slice(0, 6).map(enq => (
+                  <div key={enq.id} className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3 focus-within:ring-2 ring-brand-500/50 transition-all">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Month</label>
+                      <Input 
+                        value={enq.month} 
+                        className="h-8 text-xs font-semibold px-2 uppercase"
+                        onChange={(e) => handleEnquiryChange(enq.id, 'month', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Year</label>
+                      <Input 
+                        type="number"
+                        value={enq.year} 
+                        className="h-8 text-xs font-semibold px-2"
+                        onChange={(e) => handleEnquiryChange(enq.id, 'year', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-widest">Enquiries</label>
+                      <Input 
+                        type="number" 
+                        value={enq.value} 
+                        className="h-8 text-sm font-bold px-2"
+                        onChange={(e) => handleEnquiryChange(enq.id, 'value', e.target.value)}
+                      />
+                    </div>
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      className="w-full gap-1.5 h-8 text-[10px] font-bold uppercase"
+                      onClick={() => saveEnquiry(enq)}
+                    >
+                      <Save className="w-3 h-3" /> Save
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       ) : (
         <Card className="glass animate-in fade-in duration-300 max-w-2xl">
           <CardHeader>
@@ -534,6 +738,16 @@ export function AdminPanel() {
                   required
                 />
                 <p className="text-xs text-slate-500">This title appears in the sidebar/header across the entire application.</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Manual Total Enquiries Override</label>
+                <Input 
+                  type="number"
+                  value={manualTotal} 
+                  onChange={(e) => setManualTotal(parseInt(e.target.value) || 0)} 
+                  placeholder="e.g. 1000"
+                />
+                <p className="text-xs text-slate-500">This value will be added to the live record count to display the final "Total Enquiries" on the dashboard.</p>
               </div>
               <div className="pt-4 border-t border-slate-200 dark:border-dark-border mt-6 flex justify-end">
                 <Button type="submit" disabled={isSavingSettings}>
@@ -681,6 +895,20 @@ export function AdminPanel() {
           </Card>
         </div>
       )}
+
+      {/* Notification / Custom Alert Area */}
+      <Notification 
+        isOpen={notification.isOpen} 
+        message={notification.message} 
+        onClose={() => setNotification({ ...notification, isOpen: false })} 
+      />
+      <ConfirmModal 
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+      />
     </div>
   );
 }

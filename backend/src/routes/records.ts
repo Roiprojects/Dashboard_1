@@ -55,7 +55,16 @@ router.get('/', async (req, res) => {
 
     const records = await query(sql, queryParams);
     const totalResult = await query(countSql, params);
-    const total = totalResult[0].total;
+    let total = totalResult[0].total;
+
+    // Fetch total_enquiries_override from settings
+    const settingsRows = await query('SELECT value FROM settings WHERE key = ?', ['total_enquiries_override']);
+    if (settingsRows.length > 0) {
+      const override = parseInt(settingsRows[0].value);
+      if (!isNaN(override)) {
+        total += override;
+      }
+    }
 
     res.json({
       records,
@@ -97,7 +106,7 @@ router.post('/', authenticate, async (req, res) => {
     );
     res.status(201).json({ id: result.lastID, name, category, date, status });
   } catch (err) {
-    console.error(err);
+    console.error('DB ERROR (Create Record):', err);
     res.status(500).json({ error: 'Failed to create record' });
   }
 });

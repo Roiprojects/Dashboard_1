@@ -64,9 +64,10 @@ export function Layout() {
             <>
               <Link 
                 to="/admin" 
-                className={`text-sm font-medium transition-colors flex items-center gap-1 hover:text-brand-600 ${location.pathname === '/admin' ? 'text-brand-600 dark:text-brand-500' : 'text-slate-600 dark:text-slate-300'}`}
+                className={`p-2 rounded-lg transition-colors flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 ${location.pathname === '/admin' ? 'text-brand-600 dark:text-brand-500' : 'text-slate-600 dark:text-slate-300'}`}
+                title="Admin Panel"
               >
-                <Settings className="w-4 h-4" /> Admin
+                <Settings className="w-5 h-5" />
               </Link>
               <button 
                 onClick={handleLogout}
@@ -110,7 +111,7 @@ export function Layout() {
                   to="/admin" 
                   className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${location.pathname === '/admin' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                 >
-                  <Settings className="w-4 h-4" /> Admin Panel
+                  <Settings className="w-4 h-4" /> Settings
                 </Link>
                 <button 
                   onClick={handleLogout}

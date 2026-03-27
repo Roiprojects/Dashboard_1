@@ -77,10 +77,42 @@ export function WhatsAppIcon({ className, ...props }: React.SVGProps<SVGSVGEleme
   );
 }
 
-export function Avatar({ name, className }: { name?: string; className?: string }) {
+export function Avatar({ className }: { className?: string }) {
   return (
     <div className={cn('h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0 select-none ring-1 ring-slate-200 dark:ring-slate-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] dark:shadow-none', className)}>
       <User className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 dark:text-slate-500" strokeWidth={2.5} />
+    </div>
+  );
+}
+
+export function Notification({ message, isOpen, onClose }: { message: string; isOpen: boolean; onClose: () => void }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-[2px] animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 text-center animate-in zoom-in-95 duration-200">
+        <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+        </div>
+        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Success!</h3>
+        <p className="text-slate-500 dark:text-slate-400 mb-6">{message}</p>
+        <Button onClick={onClose} className="w-full">Dismiss</Button>
+      </div>
+    </div>
+  );
+}
+
+export function ConfirmModal({ title, message, isOpen, onConfirm, onCancel, confirmText = "Confirm" }: { title: string; message: string; isOpen: boolean; onConfirm: () => void; onCancel: () => void; confirmText?: string }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 animate-in zoom-in-95 duration-200">
+        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{title}</h3>
+        <p className="text-slate-500 dark:text-slate-400 mb-8">{message}</p>
+        <div className="flex gap-3">
+          <Button variant="secondary" onClick={onCancel} className="flex-1">Cancel</Button>
+          <Button onClick={onConfirm} className="flex-1">{confirmText}</Button>
+        </div>
+      </div>
     </div>
   );
 }
