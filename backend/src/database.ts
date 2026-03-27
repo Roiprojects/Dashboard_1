@@ -75,6 +75,19 @@ export const db = new sqlite3.Database(dbPath, (err) => {
           console.log('Seeded 60 months of enquiries');
         }
       });
+
+      // Create and seed settings table
+      db.run(`CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )`);
+
+      db.get('SELECT value FROM settings WHERE key = ?', ['project_title'], (err, row: any) => {
+        if (!row) {
+          db.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['project_title', 'Website Development Leads']);
+          console.log('Seeded default project title');
+        }
+      });
     });
   }
 });

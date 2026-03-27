@@ -1,6 +1,7 @@
 import type { ReactNode, ButtonHTMLAttributes } from 'react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { User } from 'lucide-react';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -76,30 +77,10 @@ export function WhatsAppIcon({ className, ...props }: React.SVGProps<SVGSVGEleme
   );
 }
 
-export function Avatar({ name, className }: { name: string; className?: string }) {
-  const initials = name
-    .trim()
-    .split(/\s+/)
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-
-  const colors = [
-    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-    'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
-    'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
-  ];
-
-  const charSum = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const colorClass = colors[charSum % colors.length];
-
+export function Avatar({ name, className }: { name?: string; className?: string }) {
   return (
-    <div className={cn('h-7 w-7 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 select-none ring-1 ring-white dark:ring-slate-900 shadow-sm', colorClass, className)}>
-      {initials}
+    <div className={cn('h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0 select-none ring-1 ring-slate-200 dark:ring-slate-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] dark:shadow-none', className)}>
+      <User className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 dark:text-slate-500" strokeWidth={2.5} />
     </div>
   );
 }

@@ -23,6 +23,7 @@ export function Dashboard() {
   const [data, setData] = useState<Record[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [total, setTotal] = useState(0);
+  const [dailyCount, setDailyCount] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   
@@ -49,9 +50,19 @@ export function Dashboard() {
       const res = await api.get('/records', {
         params: { page, limit: 10, search }
       });
-      setData(res.data.records);
+      const records = res.data.records;
+      // Shuffle names if it's the first load or refresh
+      for (let i = records.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [records[i], records[j]] = [records[j], records[i]];
+      }
+      setData(records);
       setTotal(res.data.total);
       setTotalPages(res.data.totalPages);
+      
+      // Also fetch stats
+      const statsRes = await api.get('/records/stats');
+      setDailyCount(statsRes.data.todayCount);
     } catch (error) {
       console.error('Error fetching records:', error);
     }
@@ -75,29 +86,29 @@ export function Dashboard() {
   }, []);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] gap-3 sm:gap-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 shrink-0">
-        <Card className="glass flex flex-col justify-center px-4 py-3">
-          <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 mb-1">
-            <Filter className="w-3.5 h-3.5" /> <span className="text-xs font-semibold uppercase tracking-wider">Daily Records</span>
+    <div className="flex flex-col h-[calc(100vh-5rem)] sm:h-[calc(100vh-6rem)] gap-2 sm:gap-4">
+      <div className="grid grid-cols-1 gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3 shrink-0">
+        <Card className="glass flex flex-col justify-center px-3 sm:px-4 py-2.5 sm:py-3 text-center items-center">
+          <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200 mb-1">
+            <Filter className="w-4 h-4 text-slate-500 dark:text-slate-400" /> <span className="text-xs sm:text-sm font-bold uppercase tracking-wider">Daily Enquiries</span>
           </div>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-bold tracking-tight text-brand-600 dark:text-brand-400 leading-none">24</span>
-            <span className="text-[10px] text-slate-500 leading-none">Records added today</span>
+          <div className="flex flex-col items-center gap-1 mt-1 sm:mt-2">
+            <span className="text-4xl sm:text-5xl font-extrabold tracking-tight text-brand-600 dark:text-brand-400 leading-none">{dailyCount}</span>
+            <span className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 leading-none mt-1">Enquiries added today</span>
           </div>
         </Card>
         
-        <Card className="glass sm:col-span-1 lg:col-span-2 px-4 py-3">
-          <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 mb-2">
-            <Calendar className="w-3.5 h-3.5" /> <span className="text-xs font-semibold uppercase tracking-wider">Monthly Enquiries (Jan 2026 - Dec 2030)</span>
+        <Card className="glass sm:col-span-1 lg:col-span-2 px-3 sm:px-4 py-2.5 sm:py-3">
+          <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200 mb-1.5 sm:mb-2">
+            <Calendar className="w-4 h-4 shrink-0 text-slate-500 dark:text-slate-400" /> <span className="text-xs sm:text-sm font-bold uppercase tracking-wider truncate">Monthly Enquiries</span>
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 snap-x custom-scrollbar">
+          <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-1 mt-1 sm:mt-2 snap-x custom-scrollbar w-full">
             {enquiries.length > 0 ? (
-              enquiries.map((enq) => (
-                <div key={enq.id} className="snap-start flex-none flex flex-col items-center justify-center min-w-[3.5rem] bg-slate-50 dark:bg-slate-800/50 rounded border border-slate-200 dark:border-slate-700 py-1 px-2">
-                  <span className="text-[9px] font-bold uppercase text-slate-500 dark:text-slate-400 leading-none">{enq.month}</span>
-                  <span className="text-[8px] text-slate-400 dark:text-slate-500 leading-none mt-0.5">{enq.year}</span>
-                  <span className="text-[13px] font-black text-blue-600 dark:text-blue-400 mt-1 leading-none">{enq.value}</span>
+              enquiries.slice(0, 6).map((enq) => (
+                <div key={enq.id} className="snap-start flex-1 min-w-[4rem] sm:min-w-[5.5rem] flex flex-col items-center justify-center bg-white dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 py-3 sm:py-4 px-2 shadow-sm hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all">
+                  <span className="text-xs sm:text-sm font-bold uppercase text-slate-500 dark:text-slate-400 leading-none tracking-wider">{enq.month}</span>
+                  <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 leading-none mt-1">{enq.year}</span>
+                  <span className="text-2xl sm:text-3xl font-black text-brand-600 dark:text-brand-400 mt-2 sm:mt-3 leading-none">{enq.value}</span>
                 </div>
               ))
             ) : (
@@ -108,9 +119,10 @@ export function Dashboard() {
       </div>
 
       <Card className="glass flex flex-col min-h-0 flex-1 overflow-hidden">
-        <CardHeader className="shrink-0 border-b border-slate-200 dark:border-dark-border py-3 px-4 sm:px-6 flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+        <CardHeader className="shrink-0 border-b border-slate-200 dark:border-dark-border py-2.5 sm:py-3 px-3 sm:px-6 flex flex-col sm:flex-row gap-2 sm:gap-3 justify-between items-start sm:items-center">
           <div className="flex items-center gap-3">
-            <CardTitle>Recent Enquiries</CardTitle>
+            <Avatar className="h-9 w-9 sm:h-10 sm:w-10" />
+            <CardTitle className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">Total Enquiries:- <span className="text-emerald-700 dark:text-emerald-500 font-extrabold">{total}</span></CardTitle>
             <Button variant="ghost" size="sm" onClick={handleShuffle} disabled={isShuffling} className="px-2 h-8" title="Shuffle Records">
               <RefreshCw className={`w-4 h-4 ${isShuffling ? 'animate-spin text-brand-600' : 'text-slate-500'}`} />
             </Button>
@@ -133,32 +145,32 @@ export function Dashboard() {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-sm text-slate-500 dark:text-slate-400 uppercase sticky top-0 z-10 shadow-sm">
               <tr>
-                <th className="px-6 py-2.5 font-medium">Name</th>
-                <th className="px-6 py-2.5 font-medium text-center">Contact</th>
-                <th className="px-6 py-2.5 font-medium text-right">Status</th>
+                <th className="px-3 sm:px-6 py-2.5 font-medium">Name</th>
+                <th className="px-3 sm:px-6 py-2.5 font-medium text-center">Contact</th>
+                <th className="px-3 sm:px-6 py-2.5 font-medium text-right">Status</th>
               </tr>
             </thead>
             <tbody className={`divide-y divide-slate-200 dark:divide-dark-border transition-opacity duration-300 ${isShuffling ? 'opacity-40' : 'opacity-100'}`}>
               {data.map((record) => (
                 <tr key={record.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="px-6 py-2.5 font-medium text-slate-900 dark:text-slate-100">
-                    <div className="flex items-center gap-3">
+                  <td className="px-3 sm:px-6 py-2 sm:py-3 font-medium text-slate-900 dark:text-slate-100 text-sm sm:text-base">
+                    <div className="flex items-center gap-2 sm:gap-3">
                       <Avatar name={record.name} />
-                      {record.name}
+                      <span className="truncate max-w-[120px] sm:max-w-none font-semibold">{record.name}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-2.5 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-full text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30">
-                         <Phone className="w-3.5 h-3.5" />
+                  <td className="px-2 sm:px-6 py-2 sm:py-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 sm:gap-3">
+                       <Button variant="ghost" size="sm" className="h-8 w-8 sm:h-9 sm:w-9 p-0 rounded-full text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30">
+                         <Phone className="w-4 h-4 sm:w-5 sm:h-5" />
                        </Button>
-                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-full text-[#25D366] hover:bg-[#25D366]/10 dark:hover:bg-[#25D366]/20">
-                         <WhatsAppIcon className="w-4 h-4" />
+                       <Button variant="ghost" size="sm" className="h-8 w-8 sm:h-9 sm:w-9 p-0 rounded-full text-[#25D366] hover:bg-[#25D366]/10 dark:hover:bg-[#25D366]/20">
+                         <WhatsAppIcon className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
                        </Button>
                     </div>
                   </td>
-                  <td className="px-6 py-2.5 text-right">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ${
+                  <td className="px-3 sm:px-6 py-2 sm:py-3 text-right">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
                       record.status === 'Interested' ? 'bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/30 dark:text-green-400' :
                       record.status === 'Completed' ? 'bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-900/30 dark:text-blue-400' :
                       record.status === 'In Progress' ? 'bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-900/30 dark:text-yellow-400' :
@@ -181,12 +193,12 @@ export function Dashboard() {
         </div>
         
         {/* Pagination */}
-        <div className="shrink-0 border-t border-slate-200 dark:border-dark-border px-6 py-3 flex items-center justify-between bg-white/50 dark:bg-dark-card/50 backdrop-blur-md">
-          <div className="text-sm text-slate-500 dark:text-slate-400">
-            Showing <span className="font-medium text-slate-900 dark:text-slate-100">{(page - 1) * 10 + 1}</span> to <span className="font-medium text-slate-900 dark:text-slate-100">{Math.min(page * 10, total)}</span> of <span className="font-medium text-slate-900 dark:text-slate-100">{total}</span>
+        <div className="shrink-0 border-t border-slate-200 dark:border-dark-border px-3 sm:px-6 py-2 sm:py-3 flex items-center justify-between bg-white/50 dark:bg-dark-card/50 backdrop-blur-md">
+          <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            <span className="hidden sm:inline">Showing </span><span className="font-medium text-slate-900 dark:text-slate-100">{(page - 1) * 10 + 1}</span>-<span className="font-medium text-slate-900 dark:text-slate-100">{Math.min(page * 10, total)}</span> of <span className="font-medium text-slate-900 dark:text-slate-100">{total}</span>
           </div>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</Button>
+          <div className="flex gap-1.5 sm:gap-2">
+            <Button variant="secondary" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}><span className="hidden sm:inline">Previous</span><span className="sm:hidden">Prev</span></Button>
             <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>
           </div>
         </div>

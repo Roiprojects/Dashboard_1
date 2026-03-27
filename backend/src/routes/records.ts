@@ -1,24 +1,8 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import { query, run } from '../database';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from './auth';
+import { authenticate } from './auth';
 
 const router = Router();
-
-// Middleware to protect routes
-export const authenticate = (req: Request, res: Response, next: NextFunction) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    (req as any).user = payload;
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-};
 
 // GET /api/records - Get records (with search, category filter, date filter, pagination)
 router.get('/', async (req, res) => {
@@ -86,6 +70,20 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/records/stats - Get record statistics (daily count)
+router.get('/stats', async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const result = await query('SELECT COUNT(*) as todayCount FROM records WHERE date = ?', [today]);
+    res.json({
+      todayCount: result[0].todayCount
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch record stats' });
+  }
+});
+
 // POST /api/records - Create a new record (protected)
 router.post('/', authenticate, async (req, res) => {
   try {
@@ -135,5 +133,149 @@ router.delete('/:id', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Failed to delete record' });
   }
 });
+
+// POST /api/records/bulk - Create multiple records at once (protected)
+router.post('/bulk', authenticate, async (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ error: 'Records array is required and must not be empty' });
+    }
+
+    const inserted: any[] = [];
+    for (const record of records) {
+      const { name, category, date, status } = record;
+      if (!name || !category || !date || !status) {
+        continue; // skip invalid records
+      }
+      const result = await run(
+        'INSERT INTO records (name, category, date, status) VALUES (?, ?, ?, ?)',
+        [name, category, date, status]
+      );
+      inserted.push({ id: result.lastID, name, category, date, status });
+    }
+
+    res.status(201).json({ inserted: inserted.length, records: inserted });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create records in bulk' });
+  }
+});
+
+// DELETE /api/records/bulk - Delete multiple records by IDs (protected)
+router.delete('/bulk', authenticate, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'IDs array is required and must not be empty' });
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    const result = await run(`DELETE FROM records WHERE id IN (${placeholders})`, ids);
+
+    res.json({ deleted: result.changes });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to delete records in bulk' });
+  }
+});
+
+// GET /api/records/export - Export all records as CSV
+router.get('/export', authenticate, async (req, res) => {
+  try {
+    const records = await query('SELECT id, name, category, date, status FROM records ORDER BY id');
+    
+    const csvHeader = 'id,name,category,date,status';
+    const csvRows = records.map((r: any) => {
+      const escapedName = `"${(r.name || '').replace(/"/g, '""')}"`;
+      const escapedCategory = `"${(r.category || '').replace(/"/g, '""')}"`;
+      const escapedStatus = `"${(r.status || '').replace(/"/g, '""')}"`;
+      return `${r.id},${escapedName},${escapedCategory},${r.date},${escapedStatus}`;
+    });
+    const csv = [csvHeader, ...csvRows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="records_export.csv"');
+    res.send(csv);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to export records' });
+  }
+});
+
+// POST /api/records/import - Import records from CSV text (protected)
+router.post('/import', authenticate, async (req, res) => {
+  try {
+    const { csvData } = req.body;
+    if (!csvData || typeof csvData !== 'string') {
+      return res.status(400).json({ error: 'csvData string is required' });
+    }
+
+    const lines = csvData.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length < 2) {
+      return res.status(400).json({ error: 'CSV must have a header row and at least one data row' });
+    }
+
+    // Parse header to find column indices
+    const header = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/"/g, ''));
+    const nameIdx = header.indexOf('name');
+    const categoryIdx = header.indexOf('category');
+    const dateIdx = header.indexOf('date');
+    const statusIdx = header.indexOf('status');
+
+    if (nameIdx === -1) {
+      return res.status(400).json({ error: 'CSV must have a "name" column' });
+    }
+
+    let insertedCount = 0;
+    for (let i = 1; i < lines.length; i++) {
+      // Simple CSV parse (handles quoted fields)
+      const fields = parseCSVLine(lines[i]);
+      const name = fields[nameIdx]?.trim();
+      const category = categoryIdx >= 0 ? (fields[categoryIdx]?.trim() || 'Other') : 'Other';
+      const date = dateIdx >= 0 ? (fields[dateIdx]?.trim() || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
+      const status = statusIdx >= 0 ? (fields[statusIdx]?.trim() || 'Interested') : 'Interested';
+
+      if (name) {
+        await run(
+          'INSERT INTO records (name, category, date, status) VALUES (?, ?, ?, ?)',
+          [name, category, date, status]
+        );
+        insertedCount++;
+      }
+    }
+
+    res.status(201).json({ imported: insertedCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to import CSV' });
+  }
+});
+
+// Helper to parse a CSV line handling quoted fields
+function parseCSVLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+        current += '"';
+        i++; // skip escaped quote
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      fields.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  fields.push(current);
+  return fields;
+}
 
 export default router;
