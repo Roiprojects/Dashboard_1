@@ -7,7 +7,7 @@ const router = Router();
 // GET /api/records - Get records (with search, category filter, date filter, pagination)
 router.get('/', async (req, res) => {
   try {
-    const { search, category, gender, origin, startDate, endDate, page = '1', limit = '10' } = req.query;
+    const { search, category, gender, origin, startDate, endDate, page = '1', limit = '20', sort } = req.query;
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
 
     let sql = 'SELECT * FROM records WHERE 1=1';
@@ -38,19 +38,25 @@ router.get('/', async (req, res) => {
       params.push(origin);
     }
     
-    // date should be in ISO or YYYY-MM-DD format
-    if (startDate && endDate) {
-      sql += ' AND date >= ? AND date <= ?';
-      countSql += ' AND date >= ? AND date <= ?';
-      params.push(startDate, endDate);
-    } else if (startDate) {
-      sql += ' AND date >= ?';
-      countSql += ' AND date >= ?';
-      params.push(startDate);
+    // date filter (ignore if sort=random is requested for global shuffle)
+    if (sort !== 'random') {
+      if (startDate && endDate) {
+        sql += ' AND date >= ? AND date <= ?';
+        countSql += ' AND date >= ? AND date <= ?';
+        params.push(startDate, endDate);
+      } else if (startDate) {
+        sql += ' AND date >= ?';
+        countSql += ' AND date >= ?';
+        params.push(startDate);
+      }
     }
 
-    // Add pagination
-    sql += ' ORDER BY date DESC LIMIT ? OFFSET ?';
+    // Sorting and pagination
+    if (sort === 'random') {
+      sql += ' ORDER BY RANDOM() LIMIT ? OFFSET ?';
+    } else {
+      sql += ' ORDER BY date DESC LIMIT ? OFFSET ?';
+    }
     const queryParams = [...params, parseInt(limit as string), offset];
 
     const records = await query(sql, queryParams);
@@ -61,8 +67,8 @@ router.get('/', async (req, res) => {
     const settingsRows = await query('SELECT value FROM settings WHERE key = ?', ['total_enquiries_override']);
     if (settingsRows.length > 0) {
       const override = parseInt(settingsRows[0].value);
-      if (!isNaN(override)) {
-        total += override;
+      if (!isNaN(override) && override > 0) {
+        total = override;
       }
     }
 

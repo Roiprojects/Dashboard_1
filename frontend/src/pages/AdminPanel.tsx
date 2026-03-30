@@ -747,7 +747,7 @@ export function AdminPanel() {
                   onChange={(e) => setManualTotal(parseInt(e.target.value) || 0)} 
                   placeholder="e.g. 1000"
                 />
-                <p className="text-xs text-slate-500">This value will be added to the live record count to display the final "Total Enquiries" on the dashboard.</p>
+                <p className="text-xs text-slate-500">This value will be displayed as the total enquiries count on the dashboard (set to 0 to show live count).</p>
               </div>
               <div className="pt-4 border-t border-slate-200 dark:border-dark-border mt-6 flex justify-end">
                 <Button type="submit" disabled={isSavingSettings}>

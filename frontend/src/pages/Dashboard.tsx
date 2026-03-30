@@ -33,26 +33,26 @@ export function Dashboard() {
 
   const handleShuffle = () => {
     setIsShuffling(true);
-    setTimeout(() => {
-      setData((prev) => {
-        const shuffled = [...prev];
-        for (let i = shuffled.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-        }
-        return shuffled;
-      });
-      setIsShuffling(false);
-    }, 600);
+    // Fetch a new random set from the server
+    fetchRecords(true).then(() => {
+      setTimeout(() => {
+        setIsShuffling(false);
+      }, 600);
+    });
   };
 
-  const fetchRecords = async () => {
+  const fetchRecords = async (isRandom?: boolean) => {
     try {
       const res = await api.get('/records', {
-        params: { page, limit: 10, search }
+        params: { 
+          page, 
+          limit: 20, 
+          search,
+          sort: isRandom ? 'random' : undefined
+        }
       });
       const records = res.data.records;
-      // Shuffle names if it's the first load or refresh
+      // Shuffle names if it's the first load or refresh (client-side shuffle for extra feel)
       for (let i = records.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [records[i], records[j]] = [records[j], records[i]];
@@ -81,10 +81,6 @@ export function Dashboard() {
       console.error('Error fetching enquiries:', error);
     }
   };
-
-  useEffect(() => {
-    fetchRecords();
-  }, [page, search]);
 
   useEffect(() => {
     fetchRecords();

@@ -96,6 +96,13 @@ export const db = new sqlite3.Database(dbPath, (err) => {
         }
       });
 
+      db.get('SELECT value FROM settings WHERE key = ?', ['display_date'], (err, row: any) => {
+        if (!row) {
+          db.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['display_date', '']);
+          console.log('Seeded empty default display_date');
+        }
+      });
+
       // Create and seed daily_enquiries table
       db.run(`CREATE TABLE IF NOT EXISTS daily_enquiries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

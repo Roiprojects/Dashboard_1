@@ -48,8 +48,35 @@ router.get('/daily', (req, res) => {
   });
 });
 
-// Get the most recent daily enquiry
+// Get the most recent daily enquiry (or the one set by display_date)
 router.get('/latest', (req, res) => {
+  db.get('SELECT value FROM settings WHERE key = ?', ['display_date'], (err, row: any) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Database error fetching display_date' });
+    }
+
+    const displayDate = row?.value;
+
+    if (displayDate) {
+      db.get('SELECT * FROM daily_enquiries WHERE date = ?', [displayDate], (err2, row2: any) => {
+        if (err2) {
+          console.error(err2);
+          return res.status(500).json({ error: 'Database error fetching daily enquiry for display_date' });
+        }
+        if (row2) {
+          return res.json(row2);
+        }
+        // Fallback to latest if displayDate not found in daily_enquiries
+        fetchActualLatest(res);
+      });
+    } else {
+      fetchActualLatest(res);
+    }
+  });
+});
+
+function fetchActualLatest(res: any) {
   db.get('SELECT * FROM daily_enquiries ORDER BY date DESC LIMIT 1', (err, row: any) => {
     if (err) {
       console.error(err);
@@ -58,7 +85,7 @@ router.get('/latest', (req, res) => {
     if (!row) return res.json({ date: new Date().toISOString().split('T')[0], value: 0 });
     res.json(row);
   });
-});
+}
 
 // Get enquiry value for a specific date
 router.get('/date/:date', (req, res) => {
@@ -101,6 +128,14 @@ router.put('/daily/:id', authenticate, (req, res) => {
         console.error('DB ERROR (Update Daily):', err);
         return res.status(500).json({ error: 'Failed to update daily enquiry' });
       }
+      
+      // Update display_date setting if we can find the date for this ID
+      db.get('SELECT date FROM daily_enquiries WHERE id = ?', [id], (err2, row: any) => {
+        if (!err2 && row) {
+          db.run('UPDATE settings SET value = ? WHERE key = ?', [row.date, 'display_date']);
+        }
+      });
+      
       res.json({ message: 'Daily enquiry updated successfully', changes: this.changes });
     }
   );
@@ -126,9 +161,13 @@ router.post('/daily', authenticate, (req, res) => {
           console.error('DB ERROR (Insert fallback):', err2);
           return res.status(500).json({ error: 'Failed to save daily enquiry' });
         }
+        // Update display_date setting
+        db.run('UPDATE settings SET value = ? WHERE key = ?', [date, 'display_date']);
         res.json({ message: 'Daily enquiry created successfully', id: this.lastID });
       });
     } else {
+      // Update display_date setting
+      db.run('UPDATE settings SET value = ? WHERE key = ?', [date, 'display_date']);
       res.json({ message: 'Daily enquiry updated successfully' });
     }
   });
